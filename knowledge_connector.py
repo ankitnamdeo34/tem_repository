@@ -4,12 +4,11 @@ def create_knowledge_base(project_id, display_name):
     Args:
         project_id: The GCP project linked with the agent.
         display_name: The display name of the Knowledge base."""
-    from google.cloud import dialogflow_v2beta1 as dialogflow
-    client = dialogflow.KnowledgeBasesClient()
-    project_path = client.common_project_path(project_id)
+#     from google.cloud import dialogflow_v2beta1 as dialogflow
+    client = dialogflow_v2beta1.KnowledgeBasesClient(credentials = credentials)
+    project_path = client.project_path(project_id)
 
-    knowledge_base = dialogflow.KnowledgeBase(
-        display_name=display_name)
+    knowledge_base = dialogflow_v2beta1.types.KnowledgeBase(display_name=display_name)
 
     response = client.create_knowledge_base(
         parent=project_path,
@@ -19,7 +18,7 @@ def create_knowledge_base(project_id, display_name):
     print('Knowledge Base created:\n')
     print('Display Name: {}\n'.format(response.display_name))
     print('Knowledge ID: {}\n'.format(response.name))
-
+    
 def create_document(project_id, knowledge_base_id, display_name, mime_type,
                     knowledge_type, content_uri):
     """Creates a Document.
@@ -59,8 +58,13 @@ def create_document(project_id, knowledge_base_id, display_name, mime_type,
         print('    - {}'.format(KNOWLEDGE_TYPES[knowledge_type]))
     print(' - Source: {}\n'.format(document.content_uri))
 
-def detect_intent_knowledge(project_id, session_id, language_code,
-                            knowledge_base_id, texts):
+def detect_intent_knowledge(
+    project_id,
+    session_id,
+    language_code,
+    knowledge_base_id,
+    texts
+):
     """Returns the result of detect intent with querying Knowledge Connector.
 
     Args:
@@ -71,41 +75,32 @@ def detect_intent_knowledge(project_id, session_id, language_code,
     knowledge_base_id: The Knowledge base's id to query against.
     texts: A list of text queries to send.
     """
-    from google.cloud import dialogflow_v2beta1 as dialogflow
-    session_client = dialogflow.SessionsClient()
-
+    credentials = service_account.Credentials.from_service_account_file(service_account_file)
+    session_client = dialogflow_v2beta1.SessionsClient(credentials=credentials)
     session_path = session_client.session_path(project_id, session_id)
     print('Session path: {}\n'.format(session_path))
-
+    response_list = []
     for text in texts:
-        text_input = dialogflow.TextInput(
-            text=text, language_code=language_code)
-
-        query_input = dialogflow.QueryInput(text=text_input)
-
-        knowledge_base_path = dialogflow.KnowledgeBasesClient \
-            .knowledge_base_path(project_id, knowledge_base_id)
-
-        query_params = dialogflow.QueryParameters(
-            knowledge_base_names=[knowledge_base_path])
-
-        request = dialogflow.DetectIntentRequest(
+        text_input = dialogflow_v2beta1.types.TextInput(
+            text=text,
+            language_code="en"
+        )    
+        query_input = dialogflow_v2beta1.types.QueryInput(
+            text=text_input
+        )
+        knowledge_base_path = dialogflow_v2beta1.KnowledgeBasesClient.knowledge_base_path(
+            project_id,
+            knowledge_base_id
+        )
+        query_params = dialogflow_v2beta1.types.QueryParameters(
+            knowledge_base_names=[knowledge_base_path]
+        )
+        response = session_client.detect_intent(
             session=session_path,
             query_input=query_input,
             query_params=query_params
         )
-        response = session_client.detect_intent(request=request)
+        
+        response_list.append(response)
 
-        print('=' * 20)
-        print('Query text: {}'.format(response.query_result.query_text))
-        print('Detected intent: {} (confidence: {})\n'.format(
-            response.query_result.intent.display_name,
-            response.query_result.intent_detection_confidence))
-        print('Fulfillment text: {}\n'.format(
-            response.query_result.fulfillment_text))
-        print('Knowledge results:')
-        knowledge_answers = response.query_result.knowledge_answers
-        for answers in knowledge_answers.answers:
-            print(' - Answer: {}'.format(answers.answer))
-            print(' - Confidence: {}'.format(
-                answers.match_confidence))
+    return response_list
